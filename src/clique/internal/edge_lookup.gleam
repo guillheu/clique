@@ -26,7 +26,7 @@ pub type EdgeData {
     from: #(Float, Float),
     target: Handle,
     to: #(Float, Float),
-    kind: String,
+    kind: path.PathKind,
     path: String,
     cx: Float,
     cy: Float,
@@ -105,7 +105,7 @@ pub fn insert(
   from: #(Float, Float),
   target: Handle,
   to: #(Float, Float),
-  kind: String,
+  kind: path.PathKind,
 ) -> EdgeLookup {
   let #(path, cx, cy) = path.default(kind, from, to)
   let data = EdgeData(source:, from:, target:, to:, kind:, path:, cx:, cy:)

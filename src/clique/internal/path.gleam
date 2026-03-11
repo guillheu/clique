@@ -4,28 +4,37 @@ import clique/position.{
 }
 import gleam/float
 
-//
+pub type PathKind {
+  Step(mid_ratio: Float)
+  Linear
+  Bezier(from_position: Position, to_position: Position)
+}
 
 ///
 ///
 pub fn default(
-  kind: String,
+  kind: PathKind,
   from: #(Float, Float),
   to: #(Float, Float),
 ) -> #(String, Float, Float) {
   case kind {
-    "bezier" ->
-      bezier(from.0, from.1, position.Right, to.0, to.1, position.Left)
-    "step" -> step(from.0, from.1, to.0, to.1)
-    "linear" | _ -> straight(from.0, from.1, to.0, to.1)
+    Step(mid_ratio:) -> step(from.0, from.1, to.0, to.1, mid_ratio)
+    Linear -> linear(from.0, from.1, to.0, to.1)
+    Bezier(from_pos, to_pos) ->
+      bezier(from.0, from.1, from_pos, to.0, to.1, to_pos)
   }
+  //   "bezier" ->
+  //     bezier(from.0, from.1, position.Right, to.0, to.1, position.Left)
+  //   "step" -> step(from.0, from.1, to.0, to.1)
+  //   "linear" | _ -> straight(from.0, from.1, to.0, to.1)
+  // }
 }
 
 // STRAIGHT PATH ---------------------------------------------------------------
 
 ///
 ///
-pub fn straight(
+pub fn linear(
   from_x: Float,
   from_y: Float,
   to_x: Float,
@@ -141,8 +150,9 @@ pub fn step(
   from_y: Float,
   to_x: Float,
   to_y: Float,
+  mid_ratio: Float,
 ) -> #(String, Float, Float) {
-  let mid_x = float.to_precision(from_x +. { to_x -. from_x } /. 2.0, 2)
+  let mid_x = float.to_precision(from_x +. { to_x -. from_x } *. mid_ratio, 2)
   let mid_y = float.to_precision(from_y +. { to_y -. from_y } /. 2.0, 2)
   let dx1 = mid_x -. from_x
   let dy1 = 0.0
@@ -179,4 +189,14 @@ pub fn step(
 
 fn format(value: Float) -> String {
   value |> float.to_precision(2) |> float.to_string
+}
+
+pub fn string_to_path_kind(kind: String) -> PathKind {
+  case kind {
+    "linear" -> Linear
+    "bezier" -> Bezier(position.Right, position.Left)
+    // I like having it be explicitly set
+    "step" -> Step(0.5)
+    _ -> Bezier(position.Right, position.Left)
+  }
 }

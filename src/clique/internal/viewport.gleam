@@ -286,7 +286,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       #(model, effect)
     }
 
-    EdgeConnected(from: source, to: target, kind:) -> {
+    EdgeConnected(from: source, to: target, kind: kind_string) -> {
       let from_key = source.node <> " " <> source.name
       let to_key = target.node <> " " <> target.name
 
@@ -303,6 +303,8 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       let from = mutable_dict.unsafe_get(model.handles, from_key)
       let to = mutable_dict.unsafe_get(model.handles, to_key)
 
+      let kind = path.string_to_path_kind(kind_string)
+
       let edges =
         edge_lookup.insert(model.edges, source, from, target, to, kind)
 
@@ -312,7 +314,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       #(model, effect)
     }
 
-    EdgeReconnected(prev:, next:, kind:) -> {
+    EdgeReconnected(prev:, next:, kind: kind_string) -> {
       let edges = edge_lookup.delete(model.edges, prev.0, prev.1)
       let from_key = { next.0 }.node <> " " <> { next.0 }.name
       let to_key = { next.1 }.node <> " " <> { next.1 }.name
@@ -329,6 +331,8 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
 
       let from = mutable_dict.unsafe_get(model.handles, from_key)
       let to = mutable_dict.unsafe_get(model.handles, to_key)
+
+      let kind = path.string_to_path_kind(kind_string)
 
       let edges = edge_lookup.insert(edges, next.0, from, next.1, to, kind)
       let model = Model(..model, edges:)
@@ -352,6 +356,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
               let to_key = { edge.1 }.node <> " " <> { edge.1 }.name
               let has_from = mutable_dict.has_key(model.handles, from_key)
               let has_to = mutable_dict.has_key(model.handles, to_key)
+              let kind = path.string_to_path_kind(edge.2)
 
               case has_from, has_to {
                 True, True ->
@@ -361,7 +366,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                     mutable_dict.unsafe_get(model.handles, from_key),
                     edge.1,
                     mutable_dict.unsafe_get(model.handles, to_key),
-                    edge.2,
+                    kind,
                   )
 
                 True, False ->
@@ -371,7 +376,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                     mutable_dict.unsafe_get(model.handles, from_key),
                     edge.1,
                     #(0.0, 0.0),
-                    edge.2,
+                    kind,
                   )
 
                 False, True ->
@@ -381,7 +386,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                     #(0.0, 0.0),
                     edge.1,
                     mutable_dict.unsafe_get(model.handles, to_key),
-                    edge.2,
+                    kind,
                   )
 
                 False, False ->
@@ -391,7 +396,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                     #(0.0, 0.0),
                     edge.1,
                     #(0.0, 0.0),
-                    edge.2,
+                    kind,
                   )
               }
             }
