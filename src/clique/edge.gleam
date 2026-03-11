@@ -72,8 +72,8 @@ pub fn bezier(
 
 ///
 ///
-pub fn linear() -> Attribute(msg) {
-  attribute("type", "linear")
+pub fn linear(other_attributes: List(Attribute(msg))) -> List(Attribute(msg)) {
+  [attribute("type", "linear"), ..other_attributes]
 }
 
 ///
