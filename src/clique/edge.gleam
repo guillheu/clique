@@ -58,9 +58,9 @@ pub fn to(handle: Handle) -> Attribute(msg) {
 ///
 ///
 pub fn bezier(
+  other_attributes: List(Attribute(msg)),
   from_position: position.Position,
   to_position: position.Position,
-  other_attributes: List(Attribute(msg)),
 ) -> List(Attribute(msg)) {
   [
     attribute("type", "bezier"),
@@ -79,8 +79,8 @@ pub fn linear(other_attributes: List(Attribute(msg))) -> List(Attribute(msg)) {
 ///
 ///
 pub fn step(
-  mid_ratio: Float,
   other_attributes: List(Attribute(msg)),
+  mid_ratio: Float,
 ) -> List(Attribute(msg)) {
   [
     attribute("type", "step"),
