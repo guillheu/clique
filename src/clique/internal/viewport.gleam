@@ -251,13 +251,13 @@ fn options() -> List(component.Option(Msg)) {
 
 type Msg {
   EdgeDisconnected(from: Handle, to: Handle)
-  EdgeConnected(from: Handle, to: Handle, kind: String)
+  EdgeConnected(from: Handle, to: Handle, kind: path.PathKind)
   EdgeReconnected(
     prev: #(Handle, Handle),
     next: #(Handle, Handle),
-    kind: String,
+    kind: path.PathKind,
   )
-  EdgesMounted(edges: List(#(Handle, Handle, String)))
+  EdgesMounted(edges: List(#(Handle, Handle, path.PathKind)))
   InertiaSimulationTicked
   NodeMounted(element: HtmlElement, id: String)
   NodesMoved(dict.Dict(String, #(Float, Float)))
@@ -286,7 +286,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       #(model, effect)
     }
 
-    EdgeConnected(from: source, to: target, kind: kind_string) -> {
+    EdgeConnected(from: source, to: target, kind:) -> {
       let from_key = source.node <> " " <> source.name
       let to_key = target.node <> " " <> target.name
 
@@ -303,7 +303,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       let from = mutable_dict.unsafe_get(model.handles, from_key)
       let to = mutable_dict.unsafe_get(model.handles, to_key)
 
-      let kind = path.string_to_path_kind(kind_string)
+      // let kind = path.string_to_path_kind(kind_string, todo, todo, todo)
 
       let edges =
         edge_lookup.insert(model.edges, source, from, target, to, kind)
@@ -314,7 +314,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
       #(model, effect)
     }
 
-    EdgeReconnected(prev:, next:, kind: kind_string) -> {
+    EdgeReconnected(prev:, next:, kind:) -> {
       let edges = edge_lookup.delete(model.edges, prev.0, prev.1)
       let from_key = { next.0 }.node <> " " <> { next.0 }.name
       let to_key = { next.1 }.node <> " " <> { next.1 }.name
@@ -331,8 +331,6 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
 
       let from = mutable_dict.unsafe_get(model.handles, from_key)
       let to = mutable_dict.unsafe_get(model.handles, to_key)
-
-      let kind = path.string_to_path_kind(kind_string)
 
       let edges = edge_lookup.insert(edges, next.0, from, next.1, to, kind)
       let model = Model(..model, edges:)
@@ -356,7 +354,6 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
               let to_key = { edge.1 }.node <> " " <> { edge.1 }.name
               let has_from = mutable_dict.has_key(model.handles, from_key)
               let has_to = mutable_dict.has_key(model.handles, to_key)
-              let kind = path.string_to_path_kind(edge.2)
 
               case has_from, has_to {
                 True, True ->
@@ -366,7 +363,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                     mutable_dict.unsafe_get(model.handles, from_key),
                     edge.1,
                     mutable_dict.unsafe_get(model.handles, to_key),
-                    kind,
+                    edge.2,
                   )
 
                 True, False ->
@@ -376,7 +373,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                     mutable_dict.unsafe_get(model.handles, from_key),
                     edge.1,
                     #(0.0, 0.0),
-                    kind,
+                    edge.2,
                   )
 
                 False, True ->
@@ -386,7 +383,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                     #(0.0, 0.0),
                     edge.1,
                     mutable_dict.unsafe_get(model.handles, to_key),
-                    kind,
+                    edge.2,
                   )
 
                 False, False ->
@@ -396,7 +393,7 @@ fn update(model: Model, msg: Msg) -> #(Model, Effect(Msg)) {
                     #(0.0, 0.0),
                     edge.1,
                     #(0.0, 0.0),
-                    kind,
+                    edge.2,
                   )
               }
             }
@@ -783,8 +780,28 @@ fn view(model: Model) -> Element(Msg) {
       list.filter_map(assigned_elements, fn(element) {
         use from <- result.try(dom.attribute(element, "from"))
         use to <- result.try(dom.attribute(element, "to"))
-        let kind = dom.attribute(element, "type") |> result.unwrap("bezier")
+        let kind_string =
+          dom.attribute(element, "type") |> result.unwrap("bezier")
+        let opt_bezier_from_pos =
+          dom.attribute(element, "bezier-from-pos")
+          |> result.try(position.from_string)
+          |> option.from_result
+        let opt_bezier_to_pos =
+          dom.attribute(element, "bezier-to-pos")
+          |> result.try(position.from_string)
+          |> option.from_result
+        let opt_step_mid_ratio =
+          dom.attribute(element, "step-mid-ratio")
+          |> result.try(float.parse)
+          |> option.from_result
 
+        let kind =
+          path.string_to_path_kind(
+            kind_string,
+            opt_bezier_from_pos,
+            opt_bezier_to_pos,
+            opt_step_mid_ratio,
+          )
         case string.split(from, " "), string.split(to, " ") {
           [from_node, from_name], [to_node, to_name]
             if from_node != ""

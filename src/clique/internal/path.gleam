@@ -2,7 +2,10 @@ import clique/position.{
   type Position, Bottom, BottomLeft, BottomRight, Left, Right, Top, TopLeft,
   TopRight,
 }
+import gleam/dynamic/decode
 import gleam/float
+import gleam/json
+import gleam/option.{type Option}
 
 pub type PathKind {
   Step(mid_ratio: Float)
@@ -191,12 +194,62 @@ fn format(value: Float) -> String {
   value |> float.to_precision(2) |> float.to_string
 }
 
-pub fn string_to_path_kind(kind: String) -> PathKind {
+pub fn string_to_path_kind(
+  kind: String,
+  bezier_from_position: Option(position.Position),
+  bezier_to_position: Option(position.Position),
+  step_mid_ratio: Option(Float),
+) -> PathKind {
   case kind {
     "linear" -> Linear
-    "bezier" -> Bezier(position.Right, position.Left)
-    // I like having it be explicitly set
-    "step" -> Step(0.5)
-    _ -> Bezier(position.Right, position.Left)
+    "step" -> Step(option.unwrap(step_mid_ratio, 0.5))
+    _ ->
+      Bezier(
+        option.unwrap(bezier_from_position, Left),
+        option.unwrap(bezier_to_position, Right),
+      )
+  }
+}
+
+pub fn path_kind_to_json(path_kind: PathKind) -> json.Json {
+  case path_kind {
+    Step(mid_ratio:) ->
+      json.object([
+        #("type", json.string("step")),
+        #("mid_ratio", json.float(mid_ratio)),
+      ])
+    Linear ->
+      json.object([
+        #("type", json.string("linear")),
+      ])
+    Bezier(from_position:, to_position:) ->
+      json.object([
+        #("type", json.string("bezier")),
+        #("from_position", position.position_to_json(from_position)),
+        #("to_position", position.position_to_json(to_position)),
+      ])
+  }
+}
+
+pub fn path_kind_decoder() -> decode.Decoder(PathKind) {
+  use variant <- decode.field("type", decode.string)
+  case variant {
+    "step" -> {
+      use mid_ratio <- decode.field("mid_ratio", decode.float)
+      decode.success(Step(mid_ratio:))
+    }
+    "linear" -> decode.success(Linear)
+    "bezier" -> {
+      use from_position <- decode.field(
+        "from_position",
+        position.position_decoder(),
+      )
+      use to_position <- decode.field(
+        "to_position",
+        position.position_decoder(),
+      )
+      decode.success(Bezier(from_position:, to_position:))
+    }
+    _ -> decode.failure(Linear, "PathKind")
   }
 }

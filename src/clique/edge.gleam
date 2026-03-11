@@ -1,7 +1,10 @@
 // IMPORTS ---------------------------------------------------------------------
 
 import clique/handle.{type Handle, Handle}
+import clique/internal/path
+import clique/position
 import gleam/dynamic/decode
+import gleam/float
 import gleam/json
 import gleam/option.{type Option, None, Some}
 import gleam/string
@@ -91,7 +94,7 @@ fn emit_disconnect(from: Handle, to: Handle) -> Effect(msg) {
 }
 
 pub fn on_reconnect(
-  handler: fn(#(Handle, Handle), #(Handle, Handle), String) -> msg,
+  handler: fn(#(Handle, Handle), #(Handle, Handle), path.PathKind) -> msg,
 ) -> Attribute(msg) {
   event.on("clique:reconnect", {
     use old <- decode.subfield(["detail", "old"], {
@@ -108,7 +111,7 @@ pub fn on_reconnect(
       decode.success(#(from, to))
     })
 
-    use kind <- decode.subfield(["detail", "type"], decode.string)
+    use kind <- decode.subfield(["detail", "type"], path.path_kind_decoder())
 
     decode.success(handler(old, new, kind))
   })
@@ -117,7 +120,7 @@ pub fn on_reconnect(
 fn emit_reconnect(
   old: #(Handle, Handle),
   new: #(Handle, Handle),
-  new_kind: String,
+  new_kind: path.PathKind,
 ) -> Effect(msg) {
   event.emit("clique:reconnect", {
     json.object([
@@ -133,27 +136,29 @@ fn emit_reconnect(
           #("to", handle.to_json(new.1)),
         ])
       }),
-      #("type", json.string(new_kind)),
+      #("type", path.path_kind_to_json(new_kind)),
     ])
   })
 }
 
-pub fn on_connect(handler: fn(Handle, Handle, String) -> msg) -> Attribute(msg) {
+pub fn on_connect(
+  handler: fn(Handle, Handle, path.PathKind) -> msg,
+) -> Attribute(msg) {
   event.on("clique:connect", {
     use from <- decode.subfield(["detail", "from"], handle.decoder())
     use to <- decode.subfield(["detail", "to"], handle.decoder())
-    use kind <- decode.subfield(["detail", "type"], decode.string)
+    use kind <- decode.subfield(["detail", "type"], path.path_kind_decoder())
 
     decode.success(handler(from, to, kind))
   })
 }
 
-fn emit_connect(from: Handle, to: Handle, kind: String) -> Effect(msg) {
+fn emit_connect(from: Handle, to: Handle, kind: path.PathKind) -> Effect(msg) {
   event.emit("clique:connect", {
     json.object([
       #("from", handle.to_json(from)),
       #("to", handle.to_json(to)),
-      #("type", json.string(kind)),
+      #("type", path.path_kind_to_json(kind)),
     ])
   })
 }
@@ -163,21 +168,15 @@ fn emit_change(
   old_to: Option(Handle),
   new_from: Option(Handle),
   new_to: Option(Handle),
-  kind: String,
+  kind: path.PathKind,
 ) -> Effect(msg) {
-  let new_kind = case kind {
-    "" -> "bezier"
-    k -> k
-  }
-
   case old_from, old_to, new_from, new_to {
     Some(old_from), Some(old_to), Some(new_from), Some(new_to) ->
-      emit_reconnect(#(old_from, old_to), #(new_from, new_to), new_kind)
+      emit_reconnect(#(old_from, old_to), #(new_from, new_to), kind)
 
     Some(old_from), Some(old_to), _, _ -> emit_disconnect(old_from, old_to)
 
-    _, _, Some(new_from), Some(new_to) ->
-      emit_connect(new_from, new_to, new_kind)
+    _, _, Some(new_from), Some(new_to) -> emit_connect(new_from, new_to, kind)
 
     _, _, _, _ -> effect.none()
   }
@@ -186,11 +185,26 @@ fn emit_change(
 // MODEL -----------------------------------------------------------------------
 
 type Model {
-  Model(from: Option(Handle), to: Option(Handle), kind: String)
+  Model(
+    from: Option(Handle),
+    to: Option(Handle),
+    kind: String,
+    bezier_from_position: Option(position.Position),
+    bezier_to_position: Option(position.Position),
+    step_mid_ratio: Option(Float),
+  )
 }
 
 fn init(_) -> #(Model, Effect(Msg)) {
-  let model = Model(from: None, to: None, kind: "bezier")
+  let model =
+    Model(
+      from: None,
+      to: None,
+      kind: "bezier",
+      bezier_from_position: None,
+      bezier_to_position: None,
+      step_mid_ratio: None,
+    )
   let effect = effect.none()
 
   #(model, effect)
@@ -230,6 +244,34 @@ fn options() -> List(component.Option(Msg)) {
         _ -> Ok(ParentSetType(value:))
       }
     }),
+
+    //
+    //
+    component.on_attribute_change("bezier-from-pos", fn(value) {
+      case position.from_string(value) {
+        Ok(pos) -> Ok(ParentSetBezierFromPosition(pos))
+        Error(_) -> Ok(ParentSetBezierFromPosition(position.Right))
+      }
+    }),
+
+    //
+    //
+    component.on_attribute_change("bezier-to-pos", fn(value) {
+      case position.from_string(value) {
+        Ok(pos) -> Ok(ParentSetBezierToPosition(pos))
+        Error(_) -> Ok(ParentSetBezierToPosition(position.Left))
+      }
+    }),
+
+    //
+    //
+    component.on_attribute_change("step-mid-ratio", fn(value) {
+      case float.parse(value) {
+        Ok(value) if 0.0 <=. value && value >=. 1.0 ->
+          Ok(ParentSetStepMidRatio(value))
+        _ -> Ok(ParentSetStepMidRatio(0.5))
+      }
+    }),
   ]
 }
 
@@ -241,14 +283,24 @@ type Msg {
   ParentSetFrom(value: Handle)
   ParentSetTo(value: Handle)
   ParentSetType(value: String)
+  ParentSetBezierFromPosition(value: position.Position)
+  ParentSetBezierToPosition(value: position.Position)
+  ParentSetStepMidRatio(value: Float)
 }
 
 fn update(prev: Model, msg: Msg) -> #(Model, Effect(Msg)) {
+  let prev_path_kind =
+    path.string_to_path_kind(
+      prev.kind,
+      prev.bezier_from_position,
+      prev.bezier_to_position,
+      prev.step_mid_ratio,
+    )
   case msg {
     ParentRemovedFrom -> {
       let next = Model(..prev, from: None)
       let effect =
-        emit_change(prev.from, prev.to, next.from, next.to, next.kind)
+        emit_change(prev.from, prev.to, next.from, next.to, prev_path_kind)
 
       #(next, effect)
     }
@@ -256,7 +308,7 @@ fn update(prev: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     ParentRemovedTo -> {
       let next = Model(..prev, to: None)
       let effect =
-        emit_change(prev.from, prev.to, next.from, next.to, next.kind)
+        emit_change(prev.from, prev.to, next.from, next.to, prev_path_kind)
 
       #(next, effect)
     }
@@ -264,7 +316,7 @@ fn update(prev: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     ParentSetFrom(value) -> {
       let next = Model(..prev, from: Some(value))
       let effect =
-        emit_change(prev.from, prev.to, next.from, next.to, next.kind)
+        emit_change(prev.from, prev.to, next.from, next.to, prev_path_kind)
 
       #(next, effect)
     }
@@ -272,16 +324,66 @@ fn update(prev: Model, msg: Msg) -> #(Model, Effect(Msg)) {
     ParentSetTo(value) -> {
       let next = Model(..prev, to: Some(value))
       let effect =
-        emit_change(prev.from, prev.to, next.from, next.to, next.kind)
+        emit_change(prev.from, prev.to, next.from, next.to, prev_path_kind)
 
       #(next, effect)
     }
 
     ParentSetType(value) -> {
       let next = Model(..prev, kind: value)
-      let effect =
-        emit_change(prev.from, prev.to, next.from, next.to, next.kind)
+      let next_path_kind =
+        path.string_to_path_kind(
+          next.kind,
+          next.bezier_from_position,
+          next.bezier_to_position,
+          next.step_mid_ratio,
+        )
 
+      let effect =
+        emit_change(prev.from, prev.to, next.from, next.to, next_path_kind)
+
+      #(next, effect)
+    }
+    ParentSetBezierFromPosition(value:) -> {
+      let next = Model(..prev, bezier_from_position: Some(value))
+      let next_path_kind =
+        path.string_to_path_kind(
+          next.kind,
+          next.bezier_from_position,
+          next.bezier_to_position,
+          next.step_mid_ratio,
+        )
+
+      let effect =
+        emit_change(prev.from, prev.to, next.from, next.to, next_path_kind)
+      #(next, effect)
+    }
+    ParentSetBezierToPosition(value:) -> {
+      let next = Model(..prev, bezier_to_position: Some(value))
+      let next_path_kind =
+        path.string_to_path_kind(
+          next.kind,
+          next.bezier_from_position,
+          next.bezier_to_position,
+          next.step_mid_ratio,
+        )
+
+      let effect =
+        emit_change(prev.from, prev.to, next.from, next.to, next_path_kind)
+      #(next, effect)
+    }
+    ParentSetStepMidRatio(value:) -> {
+      let next = Model(..prev, step_mid_ratio: Some(value))
+      let next_path_kind =
+        path.string_to_path_kind(
+          next.kind,
+          next.bezier_from_position,
+          next.bezier_to_position,
+          next.step_mid_ratio,
+        )
+
+      let effect =
+        emit_change(prev.from, prev.to, next.from, next.to, next_path_kind)
       #(next, effect)
     }
   }
