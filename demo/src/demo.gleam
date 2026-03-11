@@ -348,7 +348,7 @@ fn view_node(
 }
 
 fn view_edge(data: Edge) -> Element(msg) {
-  clique.edge(data.source, data.target, [edge.linear()], [
+  clique.edge(data.source, data.target, edge.linear([]), [
     html.p([attribute.class("px-1 text-xs bg-yellow-300 rounded")], [
       html.text(data.source.node <> " → " <> data.target.node),
     ]),
