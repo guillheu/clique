@@ -57,8 +57,17 @@ pub fn to(handle: Handle) -> Attribute(msg) {
 
 ///
 ///
-pub fn bezier() -> Attribute(msg) {
-  attribute("type", "bezier")
+pub fn bezier(
+  from_position: position.Position,
+  to_position: position.Position,
+  other_attributes: List(Attribute(msg)),
+) -> List(Attribute(msg)) {
+  [
+    attribute("type", "bezier"),
+    attribute("bezier-from-position", position.to_string(from_position)),
+    attribute("bezier-to-position", position.to_string(to_position)),
+    ..other_attributes
+  ]
 }
 
 ///
@@ -69,8 +78,15 @@ pub fn linear() -> Attribute(msg) {
 
 ///
 ///
-pub fn step() -> Attribute(msg) {
-  attribute("type", "step")
+pub fn step(
+  mid_ratio: Float,
+  other_attributes: List(Attribute(msg)),
+) -> List(Attribute(msg)) {
+  [
+    attribute("type", "step"),
+    attribute("step-mid-ratio", float.to_string(mid_ratio)),
+    ..other_attributes
+  ]
 }
 
 // EVENTS ----------------------------------------------------------------------
